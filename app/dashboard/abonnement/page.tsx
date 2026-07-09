@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { CheckCircle2, Loader2, Sparkles, RefreshCw } from "lucide-react";
+import { CheckCircle2, Loader2, Sparkles } from "lucide-react";
 
 const LIMITE_ESSAI = 3;
 
@@ -12,8 +12,6 @@ export default function AbonnementPage() {
   const [quotesUtilisees, setQuotesUtilisees] = useState(0);
   const [statutAbonnement, setStatutAbonnement] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -35,6 +33,23 @@ export default function AbonnementPage() {
       setQuotesUtilisees(profile?.quotes_created_total || 0);
       setStatutAbonnement(sub?.status || null);
       setLoading(false);
+
+      // Filet de sécurité silencieux : si le webhook Stripe a pris du retard
+      // (ou n'a pas encore livré son événement), on revérifie directement
+      // auprès de Stripe en arrière-plan, sans rien demander à l'utilisateur.
+      const estDejaActif = sub?.status === "active" || sub?.status === "trialing";
+      if (!estDejaActif) {
+        try {
+          const res = await fetch("/api/stripe/resync", { method: "POST" });
+          if (res.ok) {
+            const json = await res.json();
+            if (json.status) setStatutAbonnement(json.status);
+          }
+        } catch {
+          // Échec silencieux : la personne est simplement en essai gratuit,
+          // sans abonnement Stripe à trouver — ce n'est pas une erreur.
+        }
+      }
     }
     load();
   }, [supabase]);
@@ -64,21 +79,6 @@ export default function AbonnementPage() {
       setRedirecting(false);
       alert(json.error || "Impossible d'ouvrir le portail de facturation.");
     }
-  }
-
-  async function handleSynchroniser() {
-    setSyncing(true);
-    setSyncMessage(null);
-    const res = await fetch("/api/stripe/resync", { method: "POST" });
-    const json = await res.json();
-
-    if (res.ok) {
-      setStatutAbonnement(json.status);
-      setSyncMessage("Synchronisé avec succès !");
-    } else {
-      setSyncMessage(json.error || "Impossible de synchroniser pour l'instant.");
-    }
-    setSyncing(false);
   }
 
   if (loading) {
@@ -117,7 +117,7 @@ export default function AbonnementPage() {
             <p className="mt-2 text-sm text-marine-500">
               {quotesUtilisees} / {LIMITE_ESSAI} soumissions gratuites utilisées.
               {essaiEpuise
-                ? " Votre essai est terminé — abonnez-vous pour continuer à créer et télécharger des soumissions."
+                ? " Votre essai est terminé. Abonnez-vous pour continuer à créer et télécharger des soumissions."
                 : " Vous pouvez continuer à créer des soumissions gratuitement jusqu'à la limite."}
             </p>
 
@@ -136,23 +136,6 @@ export default function AbonnementPage() {
               {redirecting && <Loader2 size={16} className="animate-spin" />}
               S&apos;abonner
             </button>
-
-            <div className="mt-6 border-t border-marine-100 pt-4">
-              <p className="text-xs text-marine-400">
-                Déjà abonné mais le statut ne s&apos;est pas mis à jour ? Le webhook Stripe
-                n&apos;est peut-être pas encore branché (normal en local, avant le
-                déploiement).
-              </p>
-              <button
-                onClick={handleSynchroniser}
-                disabled={syncing}
-                className="mt-2 flex items-center gap-2 text-sm font-medium text-marine-600 hover:text-marine-800 disabled:opacity-60"
-              >
-                {syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                Synchroniser mon abonnement
-              </button>
-              {syncMessage && <p className="mt-1 text-xs text-marine-500">{syncMessage}</p>}
-            </div>
           </>
         )}
       </div>
