@@ -48,7 +48,7 @@ export default async function Home() {
             <Zap className="text-vert-400" size={22} />
             <h3 className="mt-3 font-semibold">Texte libre ou formulaire</h3>
             <p className="mt-1 text-sm text-marine-300">
-              Décrivez la job comme vous la diriez à un client, ou remplissez
+              Décrivez le travail comme vous la diriez à un client, ou remplissez
               les champs vous-même.
             </p>
           </div>
